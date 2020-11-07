@@ -1,0 +1,3 @@
+﻿G:\Program Files (x86)\Microsoft Visual Studio\2019\MSBuild\Microsoft\VC\v160\Microsoft.CppBuild.targets(467,5): warning MSB8028: The intermediate directory (x64\Debug\) contains files shared from another project (dx12.vcxproj).  This can lead to incorrect clean and rebuild behavior.
+  Main.cpp
+  dx12.vcxproj -> C:\Users\x1c\Desktop\dx12\x64\Debug\Renderer.exe

@@ -1,0 +1,2 @@
+C:\Users\x1c\Desktop\dx12\x64\Debug\Renderer.exe
+C:\Users\x1c\Desktop\dx12\x64\Debug\Renderer.pdb
