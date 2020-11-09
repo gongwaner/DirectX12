@@ -11,6 +11,7 @@
 #include <DirectXMath.h>
 #include <d3d12sdklayers.h>				//for dx12 debug layer
 #include <wrl/client.h>					//for comptr
+#include "d3dx12.h"
 
 
 
