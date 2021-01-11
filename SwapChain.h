@@ -7,6 +7,7 @@ class SwapChain
 {
 public:
 	bool CreateSwapChain(Microsoft::WRL::ComPtr<IDXGIFactory4> inDxgiFactory, Microsoft::WRL::ComPtr<ID3D12CommandQueue> inCommandQueue);
+	bool CreateDescriptorHeap(Microsoft::WRL::ComPtr<ID3D12Device> inDevice);
 	bool CreateRenderTargetView(Microsoft::WRL::ComPtr<ID3D12Device> inDevice);
 
 	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> GetRtvDescriptorHeap() const { return mRtvDescriptorHeap; }
