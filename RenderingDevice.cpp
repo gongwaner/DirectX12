@@ -1,8 +1,12 @@
 #include "RenderingDevice.h"
 using Microsoft::WRL::ComPtr;
 
-RenderingDevice gRenderingDevice;
 
+RenderingDevice::~RenderingDevice()
+{
+	/*if(mDevice)
+		mDevice->Release();*/
+}
 
 bool RenderingDevice::CreateFactory()
 {
@@ -52,7 +56,7 @@ bool RenderingDevice::CreateDevice()
 		return false;
 
 	// Create the device
-	hr = D3D12CreateDevice(adapter,D3D_FEATURE_LEVEL_11_0,IID_PPV_ARGS(&mDevice));
+	hr = D3D12CreateDevice(adapter, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&mDevice));
 	if (FAILED(hr))
 		return false;
 

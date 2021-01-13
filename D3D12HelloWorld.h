@@ -2,12 +2,13 @@
 
 #include "RenderingDevice.h"
 #include "CommandQueue.h"
-#include "SwapChain.h"
+//#include "SwapChain.h"
+//#include "RenderingContext.h"
 
 
 class D3D12HelloWorld
 {
-public :
+public:
 	D3D12HelloWorld(int inWidth, int inHeight);
 
 
@@ -27,6 +28,10 @@ private:
 	RenderingDevice mRenderingDevice;
 	CommandQueue mCommandQueue;
 	SwapChain mSwapchain;
+	RenderingContext mRenderingContext;
+
+	int mWidth;
+	int mHeight;
 
 	void LoadPipeline();
 	void LoadAssets();
@@ -36,8 +41,7 @@ private:
 	D3D12_VERTEX_BUFFER_VIEW mVertexBufferView;
 	bool CreateVertexBuffer(Microsoft::WRL::ComPtr<ID3D12Device> inDevice);
 
-	Microsoft::WRL::ComPtr<ID3D12RootSignature> mRootSignature;
-	Microsoft::WRL::ComPtr<ID3D12PipelineState> mPipelineState;
-	bool CreateRootSignature(Microsoft::WRL::ComPtr<ID3D12Device> inDevice);
-	bool CreatePipelineState(Microsoft::WRL::ComPtr<ID3D12Device> inDevice);
+
+
+	
 };

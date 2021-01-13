@@ -2,7 +2,10 @@
 
 D3D12HelloWorld::D3D12HelloWorld(int inWidth, int inHeight)
 {
-
+	mWidth = inWidth;
+	mHeight = inHeight;
+	mRenderingContext.SetViewport(0.0f, 0.0f, (float)inWidth, (float)inHeight);
+	mRenderingContext.SetScissorRect(0, 0, static_cast<LONG>(inWidth), static_cast<LONG>(inHeight));
 }
 
 
@@ -19,19 +22,29 @@ void D3D12HelloWorld::OnUpdate()
 
 void D3D12HelloWorld::OnRender()
 {
+	//record all the commands we need to render the scene into the command list
+	mCommandQueue.PopulateCommandList(mSwapchain.GetRenderTarget(), mSwapchain.GetFrameIndex(), mSwapchain.GetRtvDescriptorHeap(), mSwapchain.GetRtvDescriptorSize(), mVertexBufferView, mRenderingContext);
 
+	//execute the command list
+	mCommandQueue.ExecuteCommandList();
+
+	//present the frame
+	mSwapchain.Present(1, 0);
+
+	mCommandQueue.WaitForPreviousFrame(mSwapchain);
 }
 
 void D3D12HelloWorld::OnDestroy()
 {
-
+	//ensure that the GPU is no longer referencing resources that are about to be cleaned up by the destructor.
+	mCommandQueue.WaitForGPU(mSwapchain);
 }
 
 void D3D12HelloWorld::LoadPipeline()
 {
 	mRenderingDevice.CreateDevice();
 	mCommandQueue.CreateCommandQueue(mRenderingDevice.GetDevice());
-	mSwapchain.CreateSwapChain(mRenderingDevice.GetFactory(), mCommandQueue.GetCommandQueue());
+	mSwapchain.CreateSwapChain(mRenderingDevice.GetFactory(), mCommandQueue.GetCommandQueue(), mWidth, mHeight);
 	mSwapchain.CreateDescriptorHeap(mRenderingDevice.GetDevice());
 	mSwapchain.CreateRenderTargetView(mRenderingDevice.GetDevice());
 	mCommandQueue.CreateCommandAllocator(mRenderingDevice.GetDevice());
@@ -39,24 +52,26 @@ void D3D12HelloWorld::LoadPipeline()
 
 void D3D12HelloWorld::LoadAssets()
 {
-	CreateRootSignature(mRenderingDevice.GetDevice());
-	CreatePipelineState(mRenderingDevice.GetDevice());
+	mRenderingContext.CreateRootSignature(mRenderingDevice.GetDevice());
+	mCommandQueue.CreatePipelineState(mRenderingDevice.GetDevice(), mRenderingContext);
 	mCommandQueue.CreateCommandList(mRenderingDevice.GetDevice());
 	CreateVertexBuffer(mRenderingDevice.GetDevice());
 	mCommandQueue.CreateFence(mRenderingDevice.GetDevice());
-	//WaitForPreviousFrame();
+	mCommandQueue.WaitForGPU(mSwapchain);
 }
 
 bool D3D12HelloWorld::CreateVertexBuffer(Microsoft::WRL::ComPtr<ID3D12Device> inDevice)
 {
 	HRESULT hr;
 
+
+	float m_aspectRatio = (float)mWidth / (float)mHeight;
 	// Define the geometry for a triangle.
 	Vertex triangle_vertices[] =
 	{
-		{ { 0.0f, 0.25f, 0.0f }, { 1.0f, 0.0f, 0.0f, 1.0f } },
-		{ { 0.25f, -0.25f, 0.0f }, { 0.0f, 1.0f, 0.0f, 1.0f } },
-		{ { -0.25f, -0.25f, 0.0f }, { 0.0f, 0.0f, 1.0f, 1.0f } }
+		{ { 0.0f, 0.25f * m_aspectRatio, 0.0f }, { 1.0f, 0.0f, 0.0f, 1.0f } },
+	{ { 0.25f, -0.25f * m_aspectRatio, 0.0f }, { 0.0f, 1.0f, 0.0f, 1.0f } },
+	{ { -0.25f, -0.25f * m_aspectRatio, 0.0f }, { 0.0f, 0.0f, 1.0f, 1.0f } }
 	};
 
 	const UINT vertex_buffer_size = sizeof(triangle_vertices);
@@ -89,82 +104,6 @@ bool D3D12HelloWorld::CreateVertexBuffer(Microsoft::WRL::ComPtr<ID3D12Device> in
 	mVertexBufferView.BufferLocation = mVertexBuffer->GetGPUVirtualAddress();
 	mVertexBufferView.StrideInBytes = sizeof(Vertex);
 	mVertexBufferView.SizeInBytes = vertex_buffer_size;
-
-	return true;
-}
-
-bool D3D12HelloWorld::CreateRootSignature(Microsoft::WRL::ComPtr<ID3D12Device> inDevice)
-{
-	HRESULT hr;
-
-	CD3DX12_ROOT_SIGNATURE_DESC root_signature_desc;
-	root_signature_desc.Init(0, nullptr, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
-
-	Microsoft::WRL::ComPtr<ID3DBlob> signature;
-	Microsoft::WRL::ComPtr<ID3DBlob> error;
-	hr = D3D12SerializeRootSignature(&root_signature_desc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, &error);
-	if (FAILED(hr))
-		return false;
-
-	hr = inDevice->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(&mRootSignature));
-	if (FAILED(hr))
-		return false;
-
-	return true;
-}
-
-bool D3D12HelloWorld::CreatePipelineState(Microsoft::WRL::ComPtr<ID3D12Device> inDevice)
-{
-	// Create the pipeline state, which includes compiling and loading shaders.
-	HRESULT hr;
-
-	Microsoft::WRL::ComPtr<ID3DBlob> vertex_shader;
-	Microsoft::WRL::ComPtr<ID3DBlob> pixel_shader;
-	Microsoft::WRL::ComPtr<ID3DBlob> error_buffer; //a buffer holding the error data 
-
-#if defined(_DEBUG)
-	// Enable better shader debugging with the graphics debugging tools.
-	UINT compile_flags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
-#else
-	UINT compile_flags = 0;
-#endif
-
-	hr = D3DCompileFromFile(L"shaders.hlsl", nullptr, nullptr, "VSMain", "vs_5_0", compile_flags, 0, &vertex_shader, &error_buffer);
-	if (FAILED(hr))
-	{
-		OutputDebugStringA((char*)error_buffer->GetBufferPointer());
-		return false;
-	}
-
-	hr = D3DCompileFromFile(L"shaders.hlsl", nullptr, nullptr, "PSMain", "ps_5_0", compile_flags, 0, &pixel_shader, &error_buffer);
-	if (FAILED(hr))
-	{
-		OutputDebugStringA((char*)error_buffer->GetBufferPointer());
-		return false;
-	}
-
-	//define the vertex input layout
-	D3D12_INPUT_ELEMENT_DESC input_element_descs[] =
-	{
-		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-		{ "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 } //12 = 3 vertices * 4 bytes(1 float is 4 bytes)
-	};
-
-	// Describe and create the graphics pipeline state object (PSO).
-	D3D12_GRAPHICS_PIPELINE_STATE_DESC pso_desc = {};
-	pso_desc.InputLayout = { input_element_descs, _countof(input_element_descs) };
-	pso_desc.pRootSignature = mRootSignature.Get();
-	pso_desc.VS = CD3DX12_SHADER_BYTECODE(vertex_shader.Get());
-	pso_desc.PS = CD3DX12_SHADER_BYTECODE(pixel_shader.Get());
-	pso_desc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
-	pso_desc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
-	pso_desc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-	pso_desc.NumRenderTargets = 1;
-	pso_desc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
-
-	hr = inDevice->CreateGraphicsPipelineState(&pso_desc, IID_PPV_ARGS(&mPipelineState));
-	if (FAILED(hr))
-		return false;
 
 	return true;
 }
