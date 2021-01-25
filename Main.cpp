@@ -55,7 +55,28 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     sample.OnInit();
 
     // start the main loop
-    MainLoop();
+    //MainLoop();
+	MSG msg;
+	ZeroMemory(&msg, sizeof(MSG));
+
+	while (true)
+	{
+		if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
+		{
+			if (msg.message == WM_QUIT)
+				break;
+
+			TranslateMessage(&msg);
+			DispatchMessage(&msg);
+		}
+		else {
+			// run game code
+			sample.OnUpdate();
+			sample.OnRender();
+		}
+	}
+
+	sample.OnDestroy();
 
     return 0;
 }

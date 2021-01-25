@@ -3,6 +3,8 @@
 
 using Microsoft::WRL::ComPtr;
 
+int SwapChain::mFrameIndex = 0;
+
 SwapChain::~SwapChain()
 {
     /*mSwapchain->Release();
@@ -71,7 +73,7 @@ bool SwapChain::CreateRenderTargetView(ComPtr<ID3D12Device> inDevice)
     CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(mRtvDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
 
     // Create a RTV for each frame.
-    for (int n = 0; n < mFrameCount; n++)
+    for (int n = 0; n < FRAME_BUFFER_COUNT; n++)
     {
         HRESULT hr = mSwapchain->GetBuffer(n, IID_PPV_ARGS(&mRenderTargets[n]));
         if (FAILED(hr))
@@ -98,4 +100,9 @@ bool SwapChain::Present(UINT inSyncInterval, UINT inFlags)
         return false;
 
     return true;
+}
+
+Microsoft::WRL::ComPtr<ID3D12Resource> SwapChain::GetRenderTarget()
+{ 
+	return mRenderTargets[mFrameIndex]; 
 }

@@ -42,16 +42,19 @@ bool CommandQueue::CreateCommandQueue(Microsoft::WRL::ComPtr<ID3D12Device> inDev
 
 bool CommandQueue::CreateCommandAllocator(Microsoft::WRL::ComPtr<ID3D12Device> inDevice)
 {
-    HRESULT hr = inDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&mCommandAllocator));
-    if (FAILED(hr))
-        return false;
+	for (int n = 0; n < FRAME_BUFFER_COUNT; n++)
+	{
+		HRESULT hr = inDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&mCommandAllocators[n]));
+		if (FAILED(hr))
+			return false;
+	}
 
-    return true;
+	return true;
 }
 
-bool CommandQueue::CreateCommandList(Microsoft::WRL::ComPtr<ID3D12Device> inDevice)
+bool CommandQueue::CreateCommandList(Microsoft::WRL::ComPtr<ID3D12Device> inDevice, int inFrameIndex)
 {
-    HRESULT hr = inDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, mCommandAllocator.Get(), NULL, IID_PPV_ARGS(&mCommandList));
+    HRESULT hr = inDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, mCommandAllocators[inFrameIndex].Get(), mPipelineState.Get(), IID_PPV_ARGS(&mCommandList));
     if (FAILED(hr))
         return false;
 
@@ -65,14 +68,14 @@ bool CommandQueue::CreateCommandList(Microsoft::WRL::ComPtr<ID3D12Device> inDevi
 void CommandQueue::PopulateCommandList(Microsoft::WRL::ComPtr<ID3D12Resource> inRenderTarget, int inFrameIndex,
     Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> inRtvDescriptorHeap,
     int inRtvDescriptorSize, D3D12_VERTEX_BUFFER_VIEW inVertexBufferView,
-    RenderingContext inRenderingContext)
+    RenderingContext& inRenderingContext)
 {
     //command list allocators can only be reset when the associated command lists have finished execution on the GPU
-    mCommandAllocator->Reset();
+    mCommandAllocators[inFrameIndex]->Reset();
 
     //however, when ExecuteCommandList() is called on a particular command list, 
     //that command list can then be reset at any time and must be before re-recording
-    mCommandList->Reset(mCommandAllocator.Get(), NULL);
+    mCommandList->Reset(mCommandAllocators[inFrameIndex].Get(), mPipelineState.Get());
 
     //here we start recording commands into the commandlist
     inRenderingContext.FlushRenderState(mCommandList);
@@ -89,7 +92,7 @@ void CommandQueue::PopulateCommandList(Microsoft::WRL::ComPtr<ID3D12Resource> in
     //set and clear the render target for the output merge stage
     mCommandList->OMSetRenderTargets(1, &rtv_handle, FALSE, nullptr);
 
-    const float clear_color[] = { 0.0f, 0.2f, 0.5f, 1.0f };
+	const float clear_color[] = { 0.0f, 0.2f, 0.4f, 1.0f };
     mCommandList->ClearRenderTargetView(rtv_handle, clear_color, 0, nullptr);
     inRenderingContext.Draw(mCommandList, inVertexBufferView, 3, 1, 0, 0);
 
@@ -106,12 +109,14 @@ void CommandQueue::ExecuteCommandList()
     mCommandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
 }
 
-bool CommandQueue::CreateFence(Microsoft::WRL::ComPtr<ID3D12Device> inDevice)
+bool CommandQueue::CreateFence(Microsoft::WRL::ComPtr<ID3D12Device> inDevice, int inFrameIndex)
 {
     //create synchronization objects and wait until assets have been uploaded to the GPU
     HRESULT hr = inDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&mFence));
     if (FAILED(hr))
         return false;
+
+	mFenceValues[inFrameIndex]++;
 
     //create an event handle to use for frame synchronization.
     mFenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
@@ -163,15 +168,23 @@ bool CommandQueue::CreatePipelineState(Microsoft::WRL::ComPtr<ID3D12Device> inDe
 
     // Describe and create the graphics pipeline state object (PSO).
     D3D12_GRAPHICS_PIPELINE_STATE_DESC pso_desc = {};
+	D3D12_RASTERIZER_DESC rasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+	//rasterizerState.FillMode = D3D12_FILL_MODE_WIREFRAME;
+	rasterizerState.CullMode = D3D12_CULL_MODE_NONE;
     pso_desc.InputLayout = { input_element_descs, _countof(input_element_descs) };
     pso_desc.pRootSignature = inRenderingContext.GetRootSignature().Get();
     pso_desc.VS = CD3DX12_SHADER_BYTECODE(vertex_shader.Get());
     pso_desc.PS = CD3DX12_SHADER_BYTECODE(pixel_shader.Get());
-    pso_desc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+	pso_desc.RasterizerState = rasterizerState;
     pso_desc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
     pso_desc.NumRenderTargets = 1;
     pso_desc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
     pso_desc.SampleDesc.Count = 1;
+
+	pso_desc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+	//pso_desc.DepthStencilState.DepthEnable = FALSE;
+	//pso_desc.DepthStencilState.StencilEnable = FALSE;
+	pso_desc.SampleMask = UINT16_MAX;
 
     hr = inDevice->CreateGraphicsPipelineState(&pso_desc, IID_PPV_ARGS(&mPipelineState));
     if (FAILED(hr))
@@ -197,28 +210,31 @@ void CommandQueue::WaitForPreviousFrame(SwapChain inSwapchain)
 {
     HRESULT hr;
 
-    //update fence to a specific value
-    const UINT64 current_fence_value = mFenceValues[inSwapchain.GetFrameIndex()];
-    hr = mCommandQueue->Signal(mFence.Get(), current_fence_value);
+	int frame_index = inSwapchain.GetFrameIndex();
 
-    //update the frame index
-    inSwapchain.UpdateFrameIndex();
+	//schedule a Signal command in the queue
+	const UINT64 current_fence_value = mFenceValues[frame_index];
+	hr = mCommandQueue->Signal(mFence.Get(), current_fence_value);
 
-    // if the current fence value is still less than "fenceValue", then we know the GPU has not finished executing
-    // the command queue since it has not reached the "commandQueue->Signal(fence, fenceValue)" command
-    if (mFence->GetCompletedValue() < mFenceValues[inSwapchain.GetFrameIndex()])
-    {
-        //create an event which is signaled once the fence's current value is "fenceValue"
-        hr = mFence->SetEventOnCompletion(mFenceValues[inSwapchain.GetFrameIndex()], mFenceEvent);
-        if (FAILED(hr))
-        {
-            assert("mFence->SetEventOnCompletion() failed");
-        }
-        //We will wait until the fence has triggered the event that it's current value has reached "fenceValue"
-        //once its value has reached "fenceValue", we know the command queue has finished executing
-        WaitForSingleObjectEx(mFenceEvent, INFINITE, false);
-    }
+	//update the frame index
+	inSwapchain.UpdateFrameIndex();
 
-    //increment fenceValue for next frame
-    mFenceValues[inSwapchain.GetFrameIndex()] = current_fence_value + 1;
+	frame_index = inSwapchain.GetFrameIndex();
+
+	// if the current fence value is still less than "fenceValue", then we know the GPU has not finished executing
+	// the command queue since it has not reached the "commandQueue->Signal(fence, fenceValue)" command
+	if (mFence->GetCompletedValue() < mFenceValues[frame_index])
+	{
+		//create an event which is signaled once the fence's current value is "fenceValue"
+		hr = mFence->SetEventOnCompletion(mFenceValues[frame_index], mFenceEvent);
+		if (FAILED(hr))
+		{
+			assert("mFence->SetEventOnCompletion() failed");
+		}
+		//We will wait until the fence has triggered the event that it's current value has reached "fenceValue"
+		//once its value has reached "fenceValue", we know the command queue has finished executing
+		WaitForSingleObjectEx(mFenceEvent, INFINITE, false);
+	}
+
+	mFenceValues[frame_index] = current_fence_value + 1;
 }

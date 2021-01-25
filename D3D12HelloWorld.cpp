@@ -29,7 +29,7 @@ void D3D12HelloWorld::OnRender()
 	mCommandQueue.ExecuteCommandList();
 
 	//present the frame
-	mSwapchain.Present(1, 0);
+	mSwapchain.Present(0, 0);
 
 	mCommandQueue.WaitForPreviousFrame(mSwapchain);
 }
@@ -54,9 +54,9 @@ void D3D12HelloWorld::LoadAssets()
 {
 	mRenderingContext.CreateRootSignature(mRenderingDevice.GetDevice());
 	mCommandQueue.CreatePipelineState(mRenderingDevice.GetDevice(), mRenderingContext);
-	mCommandQueue.CreateCommandList(mRenderingDevice.GetDevice());
+	mCommandQueue.CreateCommandList(mRenderingDevice.GetDevice(), mSwapchain.GetFrameIndex());
 	CreateVertexBuffer(mRenderingDevice.GetDevice());
-	mCommandQueue.CreateFence(mRenderingDevice.GetDevice());
+	mCommandQueue.CreateFence(mRenderingDevice.GetDevice(), mSwapchain.GetFrameIndex());
 	mCommandQueue.WaitForGPU(mSwapchain);
 }
 
@@ -70,8 +70,8 @@ bool D3D12HelloWorld::CreateVertexBuffer(Microsoft::WRL::ComPtr<ID3D12Device> in
 	Vertex triangle_vertices[] =
 	{
 		{ { 0.0f, 0.25f * m_aspectRatio, 0.0f }, { 1.0f, 0.0f, 0.0f, 1.0f } },
-	{ { 0.25f, -0.25f * m_aspectRatio, 0.0f }, { 0.0f, 1.0f, 0.0f, 1.0f } },
-	{ { -0.25f, -0.25f * m_aspectRatio, 0.0f }, { 0.0f, 0.0f, 1.0f, 1.0f } }
+		{ { 0.25f, -0.25f * m_aspectRatio, 0.0f }, { 0.0f, 1.0f, 0.0f, 1.0f } },
+		{ { -0.25f, -0.25f * m_aspectRatio, 0.0f }, { 0.0f, 0.0f, 1.0f, 1.0f } }
 	};
 
 	const UINT vertex_buffer_size = sizeof(triangle_vertices);
